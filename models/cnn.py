@@ -5,8 +5,8 @@ import torchvision.models as models
 class CustomCNN(nn.Module):
     def __init__(self, num_classes=4):
         super(CustomCNN, self).__init__()
-        self.resnet = models.resnet18(weights=None)
-        #self.resnet = models.resnet18(weights='IMAGENET1K_V1')
+        #self.resnet = models.resnet18(weights=None)
+        self.resnet = models.resnet18(weights='IMAGENET1K_V1')
         for param in self.resnet.parameters():
             param.requires_grad = False
         for param in self.resnet.layer4.parameters():
