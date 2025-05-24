@@ -18,13 +18,25 @@ from models.cnn_tf import create_cnn_model
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
-pytorch_model = CustomCNN(num_classes=4)
-pytorch_model.load_state_dict(torch.load(os.path.join(project_root, 'model.pth'), map_location='cpu'))
-pytorch_model.eval()
+# Variables globales pour lazy-loading
+pytorch_model = None
+tf_model = None
 
-tf_model = tf.keras.models.load_model(os.path.join(project_root, 'model_tf.h5'))
+def load_pytorch_model():
+    global pytorch_model
+    if pytorch_model is None:
+        pytorch_model = CustomCNN(num_classes=4)
+        pytorch_model.load_state_dict(torch.load(os.path.join(project_root, 'model.pth'), map_location='cpu'))
+        pytorch_model.eval()
+    return pytorch_model
 
-class_names = ['glioma', 'meningioma', 'notumor', 'pituitary']  # Adapter aux noms des dossiers dans dataset/
+def load_tf_model():
+    global tf_model
+    if tf_model is None:
+        tf_model = tf.keras.models.load_model(os.path.join(project_root, 'model_tf.h5'))
+    return tf_model
+
+class_names = ['glioma', 'meningioma', 'notumor', 'pituitary']
 
 @app.route('/')
 def index():
@@ -50,14 +62,16 @@ def predict():
     transform = get_pytorch_transforms()[1]  # Utilise test_transforms
     try:
         if model_type == 'pytorch':
+            model = load_pytorch_model()  # Charge le modèle uniquement ici
             image_tensor = transform(image).unsqueeze(0)
             with torch.no_grad():
-                output = pytorch_model(image_tensor)
+                output = model(image_tensor)
                 prediction = torch.argmax(output, dim=1).item()
         else:
+            model = load_tf_model()  # Charge le modèle uniquement ici
             image_array = np.array(image.resize((224, 224))) / 255.0
             image_array = image_array[np.newaxis, ...]
-            output = tf_model.predict(image_array)
+            output = model.predict(image_array)
             prediction = np.argmax(output, axis=1)[0]
         
         return jsonify({'prediction': class_names[prediction]})
@@ -65,4 +79,6 @@ def predict():
         return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # PythonAnywhere utilise Gunicorn, donc pas besoin de ceci en production
+    port = int(os.environ.get('PORT', 8000))  # PythonAnywhere définit PORT
+    app.run(debug=False, host='0.0.0.0', port=port)
